@@ -2,7 +2,13 @@ import * as waapi from 'waapi-client';
 import { ak } from 'waapi';
 import * as words from './words';
 
-const types = ['WorkUnit', 'ActorMixer','RandomSequenceContainer','Sound'];
+const types = ['ActorMixer','RandomSequenceContainer','Sound'];
+
+interface IObject{
+    name: string;
+    type: string;
+    children: IObject[]
+}
 
 async function main() {
 
@@ -15,36 +21,50 @@ async function main() {
         var wwiseInfo = await session.call(ak.wwise.core.getInfo, {});
         console.log(`Hello ${wwiseInfo.displayName} ${wwiseInfo.version.displayName}!`);
 
-        
-        async function populate(parent:string, parentType:string){
-            const objTypeFrom = Math.max(1,types.indexOf(parentType));
-            const childCount = Math.floor(Math.random()*10)+8;
+        var count = 1;
+       
+        function populate(parent:IObject, parentType:string, depth:number){
+            const objTypeFrom = types.indexOf(parentType);
+            const childCount = Math.floor(Math.random()*10)+3;
             for (var index = 0; index < childCount; index++) {
-                const type = types[objTypeFrom+Math.floor(Math.random()*(types.length-objTypeFrom))];
-                const path = await create(parent, type);
+                var type = 'Sound';
+                if(depth < 4)
+                    type = types[objTypeFrom+Math.floor(Math.random()*(types.length-objTypeFrom))];
 
+                const object:IObject = create(parent, type);
+                parent.children.push(object);
                 if(type != 'Sound'){
-                    await populate(path, type);
+                    populate(object, type, depth+1);
                 }                
             }
         }
-        async function create(parent:string, type:string):Promise<string>{
-            const name = words.createName(Math.floor(Math.random()*4)+1);
-
-            // Create a new Wwise Sound object in the default work unit
-            await session.call(ak.wwise.core.object.create, {
-                parent, type, name,
-                onNameConflict:"rename" }, {});
-
-            return parent + '\\' + name;
+        function create(parent:IObject, type:string):IObject{
+            count++;
+            return {
+                name: words.createName(Math.floor(Math.random()*3)+2),
+                type,
+                children:[]};
         }        
-        await populate("\\Actor-Mixer Hierarchy\\Default Work Unit", 'WorkUnit');
+
+        var args = {
+            parent:'\\Actor-Mixer Hierarchy\\Default Work Unit', 
+            type:'ActorMixer', 
+            name:'root',
+            children:[],
+            onNameConflict:'rename' };
+        console.log(`building structure...`);
+        populate(args, 'ActorMixer', 0);
+
+        console.log(`sending ${count} objects to Wwise...`);
+        await session.call(ak.wwise.core.object.create, args, {});        
 
         // Disconnect everything
         await session.disconnect();
+
+        await console.log(`done!`);
     }
     catch (e) {
-        console.log(JSON.stringify(e,null,4));
+        await console.log(e.message);
     }
 
     process.exit();
